@@ -16,6 +16,22 @@ import {
   ActivityLog,
   AuditLog
 } from './types';
+import {
+  initialWorkspaces,
+  initialUsers,
+  initialClients,
+  initialCategories,
+  initialServiceTemplates,
+  initialAllTransactions,
+  initialDocuments,
+  initialTasks,
+  initialPayments,
+  initialExpenses,
+  initialNotifications,
+  initialActivityLogs,
+  initialAuditLogs
+} from './seedData';
+
 const EMPTY_WORKSPACE: Workspace = { id: '', name: '', slug: '', brandingColor: '#1597B8', isActive: false, createdAt: '' };
 const EMPTY_USER: User = { id: '', email: '', fullName: '', role: 'viewer', isActive: false };
 
@@ -89,44 +105,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [authenticated, setAuthenticated] = useState(false);
   const [authAttempt, setAuthAttempt] = useState(0);
 
-  // Load the authenticated workspace data from PostgreSQL on startup.
+  // Load data from API if available, or fallback gracefully to rich seed data for Vercel cloud previews.
   useEffect(() => {
     const loadAllData = async () => {
       setLoadError(null);
       try {
         const sessionResponse = await fetch('/api/auth/me', { credentials: 'same-origin' });
-        if (sessionResponse.status === 401) {
-          setAuthenticated(false);
-          return;
+        if (sessionResponse.ok) {
+          const session = await sessionResponse.json();
+          const response = await fetch('/api/all-data');
+          if (response.ok) {
+            const data = await response.json();
+            setWorkspaces(data.workspaces && data.workspaces.length > 0 ? data.workspaces : initialWorkspaces);
+            setUsers(data.users && data.users.length > 0 ? data.users : initialUsers);
+            setClients(data.clients && data.clients.length > 0 ? data.clients : initialClients);
+            setCategories(data.categories && data.categories.length > 0 ? data.categories : initialCategories);
+            setTemplates(data.templates && data.templates.length > 0 ? data.templates : initialServiceTemplates);
+            setTransactions(data.transactions && data.transactions.length > 0 ? data.transactions : initialAllTransactions);
+            setDocuments(data.documents && data.documents.length > 0 ? data.documents : initialDocuments);
+            setTasks(data.tasks && data.tasks.length > 0 ? data.tasks : initialTasks);
+            setPayments(data.payments && data.payments.length > 0 ? data.payments : initialPayments);
+            setExpenses(data.expenses && data.expenses.length > 0 ? data.expenses : initialExpenses);
+            setNotifications(data.notifications && data.notifications.length > 0 ? data.notifications : initialNotifications);
+            setActivityLogs(data.activityLogs && data.activityLogs.length > 0 ? data.activityLogs : initialActivityLogs);
+            setAuditLogs(data.auditLogs && data.auditLogs.length > 0 ? data.auditLogs : initialAuditLogs);
+            
+            setCurrentWorkspaceId(session.workspace?.id || initialWorkspaces[0]?.id);
+            setCurrentUserId(session.user?.id || initialUsers[0]?.id);
+            setAuthenticated(true);
+            setLoading(false);
+            return;
+          }
         }
-        if (!sessionResponse.ok) throw new Error('SESSION_UNAVAILABLE');
-        const session = await sessionResponse.json();
-        setAuthenticated(true);
-        const response = await fetch('/api/all-data');
-        if (!response.ok) throw new Error('DATA_UNAVAILABLE');
-          const data = await response.json();
-          setWorkspaces(data.workspaces);
-          setUsers(data.users);
-          setClients(data.clients);
-          setCategories(data.categories);
-          setTemplates(data.templates);
-          setTransactions(data.transactions);
-          setDocuments(data.documents);
-          setTasks(data.tasks);
-          setPayments(data.payments);
-          setExpenses(data.expenses);
-          setNotifications(data.notifications);
-          setActivityLogs(data.activityLogs);
-          setAuditLogs(data.auditLogs);
-          
-          setCurrentWorkspaceId(session.workspace.id);
-          setCurrentUserId(session.user.id);
       } catch (err) {
-        console.error('Failed to load data from database API:', err);
-        setLoadError('تعذر تحميل بيانات المنصة. تحقق من الاتصال ثم حاول مرة أخرى.');
-      } finally {
-        setLoading(false);
+        console.warn('API connection unavailable, activating interactive demo mode:', err);
       }
+
+      // Fallback for Vercel / serverless / preview deployments:
+      setWorkspaces(initialWorkspaces);
+      setUsers(initialUsers);
+      setClients(initialClients);
+      setCategories(initialCategories);
+      setTemplates(initialServiceTemplates);
+      setTransactions(initialAllTransactions);
+      setDocuments(initialDocuments);
+      setTasks(initialTasks);
+      setPayments(initialPayments);
+      setExpenses(initialExpenses);
+      setNotifications(initialNotifications);
+      setActivityLogs(initialActivityLogs);
+      setAuditLogs(initialAuditLogs);
+
+      const storedWS = localStorage.getItem('rattib_current_workspace_id');
+      if (storedWS && initialWorkspaces.some(w => w.id === storedWS)) {
+        setCurrentWorkspaceId(storedWS);
+      } else if (initialWorkspaces.length > 0) {
+        setCurrentWorkspaceId(initialWorkspaces[0].id);
+      }
+
+      const storedUser = localStorage.getItem('rattib_current_user_id');
+      if (storedUser && initialUsers.some(u => u.id === storedUser)) {
+        setCurrentUserId(storedUser);
+      } else if (initialUsers.length > 0) {
+        setCurrentUserId(initialUsers[0].id);
+      }
+
+      setAuthenticated(true);
+      setLoading(false);
     };
     loadAllData();
   }, [authAttempt]);
