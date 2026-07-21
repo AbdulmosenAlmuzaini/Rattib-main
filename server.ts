@@ -1391,3 +1391,6 @@ main().catch(async err => {
   await prisma.$disconnect().catch(() => undefined);
   process.exitCode = 1;
 });
+
+export default app;
+
