@@ -1,0 +1,335 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Workspace {
+  id                  String   @id @default(uuid())
+  name                String
+  slug                String
+  logoUrl             String?
+  brandingColor       String
+  phone               String?
+  city                String?
+  isActive            Boolean  @default(true)
+  transactionSequence Int      @default(0)
+  receiptSequence     Int      @default(0)
+  expenseSequence     Int      @default(0)
+  createdAt           DateTime @default(now())
+
+  users             User[]
+  sessions          Session[]
+  clients           Client[]
+  serviceCategories ServiceCategory[]
+  serviceTemplates  ServiceTemplate[]
+  transactions      Transaction[]
+  tasks             Task[]
+  payments          Payment[]
+  expenses          Expense[]
+  notifications     AppNotification[]
+  activityLogs      ActivityLog[]
+  auditLogs         AuditLog[]
+  documents         AppDocument[]
+
+  @@unique([slug])
+}
+
+model User {
+  id                   String            @id @default(uuid())
+  workspaceId          String            @default("ws-1")
+  workspace            Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email                String            @unique
+  fullName             String
+  phone                String?
+  avatarUrl            String?
+  passwordHash         String            @default("")
+  role                 String // 'owner' | 'admin' | 'employee' | 'accountant' | 'viewer'
+  isActive             Boolean           @default(true)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @default(now()) @updatedAt
+  sessions             Session[]
+  assignedTransactions Transaction[]     @relation("AssignedTransactions")
+  assignedTasks        Task[]            @relation("AssignedTasks")
+  recordedPayments     Payment[]         @relation("RecordedPayments")
+  recordedExpenses     Expense[]         @relation("RecordedExpenses")
+  notifications        AppNotification[]
+  uploadedDocuments    AppDocument[]     @relation("UploadedDocuments")
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId])
+}
+
+model Session {
+  id          String    @id @default(uuid())
+  tokenHash   String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  lastUsedAt  DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([expiresAt])
+}
+
+model Client {
+  id                 String    @id @default(uuid())
+  workspaceId        String    @default("ws-1")
+  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  fullName           String // Matches Clients.name
+  clientType         String    @default("individual") // 'individual' | 'company'
+  phone              String
+  email              String?
+  city               String?
+  nationalId         String?
+  residenceId        String?
+  commercialRegister String?
+  companyName        String? // Matches Clients.company_name
+  nationality        String?
+  notes              String?
+  status             String    @default("active") // 'active' | 'archived'
+  createdAt          DateTime  @default(now())
+
+  transactions Transaction[]
+  payments     Payment[]
+  tasks        Task[]
+  documents    AppDocument[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, nationalId])
+  @@unique([workspaceId, residenceId])
+  @@unique([workspaceId, commercialRegister])
+  @@index([workspaceId, fullName])
+  @@index([workspaceId, phone])
+  @@index([workspaceId, status])
+}
+
+model ServiceCategory {
+  id          String            @id @default(uuid())
+  workspaceId String            @default("ws-1")
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  templates   ServiceTemplate[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, name])
+}
+
+model ServiceTemplate {
+  id                   String          @id @default(uuid())
+  workspaceId          String          @default("ws-1")
+  workspace            Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  categoryId           String
+  category             ServiceCategory @relation(fields: [workspaceId, categoryId], references: [workspaceId, id], onDelete: Restrict)
+  name                 String
+  description          String?
+  expectedDurationDays Int             @default(3)
+  defaultServiceFee    Decimal         @default(0) @db.Decimal(14, 2)
+  defaultGovernmentFee Decimal         @default(0) @db.Decimal(14, 2)
+  requiredDocuments    String // Stored as JSON string
+  checklistSteps       String // Stored as JSON string
+  transactions         Transaction[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, name])
+  @@index([workspaceId, categoryId])
+}
+
+model Transaction {
+  id                     String           @id @default(uuid())
+  workspaceId            String           @default("ws-1")
+  workspace              Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  referenceNumber        String
+  title                  String
+  clientId               String // FK client_id
+  client                 Client           @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Restrict)
+  serviceTemplateId      String?
+  serviceTemplate        ServiceTemplate? @relation(fields: [workspaceId, serviceTemplateId], references: [workspaceId, id], onDelete: Restrict)
+  description            String?
+  assignedUserId         String?
+  assignedUser           User?            @relation("AssignedTransactions", fields: [workspaceId, assignedUserId], references: [workspaceId, id], onDelete: Restrict)
+  priority               String           @default("normal") // 'low' | 'normal' | 'high' | 'urgent'
+  status                 String           @default("new") // 'new' | 'waiting_docs' | 'ready' | 'in_progress' | 'needs_review' | 'pending' | 'completed' | 'cancelled'
+  receivedDate           String
+  expectedCompletionDate String? // Matches Transactions.due_date
+  nextFollowUpDate       String?
+  completedDate          String?
+  serviceFee             Decimal          @default(0) @db.Decimal(14, 2)
+  governmentFee          Decimal          @default(0) @db.Decimal(14, 2)
+  extraExpenses          Decimal          @default(0) @db.Decimal(14, 2)
+  totalAmount            Decimal          @default(0) @db.Decimal(14, 2)
+  receivedAmount         Decimal          @default(0) @db.Decimal(14, 2)
+  remainingAmount        Decimal          @default(0) @db.Decimal(14, 2)
+  paymentStatus          String           @default("unpaid") // 'unpaid' | 'partially_paid' | 'fully_paid' | 'refunded'
+  internalNotes          String?
+  sharedNotes            String?
+  checklist              String // Checklist items as JSON string
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  payments  Payment[]
+  tasks     Task[]
+  expenses  Expense[]
+  documents AppDocument[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, referenceNumber])
+  @@index([workspaceId, clientId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, assignedUserId])
+  @@index([workspaceId, nextFollowUpDate])
+}
+
+model Task {
+  id             String       @id @default(uuid())
+  workspaceId    String       @default("ws-1")
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  transactionId  String?
+  transaction    Transaction? @relation(fields: [workspaceId, transactionId], references: [workspaceId, id], onDelete: Restrict)
+  clientId       String?
+  client         Client?      @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Restrict)
+  assignedUserId String?
+  assignedUser   User?        @relation("AssignedTasks", fields: [workspaceId, assignedUserId], references: [workspaceId, id], onDelete: Restrict)
+  startDate      String?
+  dueDate        String // Matches Tasks.due_date
+  priority       String       @default("normal") // 'low' | 'normal' | 'high'
+  status         String       @default("pending") // 'pending' | 'completed' etc.
+  isCompleted    Boolean      @default(false) // Matches Tasks.is_completed
+  taskType       String       @default("general") // 'general' | 'review' | 'call' | 'payment_collect' | 'doc_request'
+  createdAt      DateTime     @default(now())
+
+  @@index([workspaceId, dueDate])
+  @@index([workspaceId, status])
+  @@index([workspaceId, assignedUserId])
+}
+
+model Payment {
+  id              String      @id @default(uuid())
+  workspaceId     String      @default("ws-1")
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactionId   String // FK transaction_id
+  transaction     Transaction @relation(fields: [workspaceId, transactionId], references: [workspaceId, id], onDelete: Restrict)
+  clientId        String // FK client_id
+  client          Client      @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Restrict)
+  amount          Decimal     @db.Decimal(14, 2)
+  paymentDate     String
+  paymentMethod   String      @default("cash") // 'cash' | 'bank_transfer' | 'card' | 'network' | 'other'
+  referenceNumber String?
+  receiptNumber   String?
+  notes           String?
+  recordedBy      String      @default("usr-1")
+  recordedByUser  User        @relation("RecordedPayments", fields: [workspaceId, recordedBy], references: [workspaceId, id], onDelete: Restrict)
+  status          String      @default("received") // 'received' | 'pending'
+  createdAt       DateTime    @default(now())
+
+  @@unique([workspaceId, receiptNumber])
+  @@index([workspaceId, transactionId])
+  @@index([workspaceId, clientId])
+  @@index([workspaceId, paymentDate])
+}
+
+model Expense {
+  id             String       @id @default(uuid())
+  workspaceId    String       @default("ws-1")
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title          String
+  amount         Decimal      @db.Decimal(14, 2)
+  expenseDate    String
+  category       String
+  voucherNumber  String?
+  transactionId  String?
+  transaction    Transaction? @relation(fields: [workspaceId, transactionId], references: [workspaceId, id], onDelete: Restrict)
+  recordedBy     String       @default("usr-1")
+  recordedByUser User         @relation("RecordedExpenses", fields: [workspaceId, recordedBy], references: [workspaceId, id], onDelete: Restrict)
+  createdAt      DateTime     @default(now())
+
+  @@unique([workspaceId, voucherNumber])
+  @@index([workspaceId, expenseDate])
+  @@index([workspaceId, category])
+}
+
+model AppNotification {
+  id          String    @id @default(uuid())
+  workspaceId String    @default("ws-1")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [workspaceId, userId], references: [workspaceId, id], onDelete: Cascade)
+  title       String
+  message     String
+  type        String    @default("info") // 'info' | 'warning' | 'success' | 'error'
+  dedupeKey   String?
+  actionUrl   String?
+  isRead      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@unique([workspaceId, userId, dedupeKey])
+  @@index([workspaceId, userId, isRead])
+}
+
+model ActivityLog {
+  id          String    @id @default(uuid())
+  workspaceId String    @default("ws-1")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  userName    String
+  action      String
+  entityType  String // 'client' | 'transaction' | 'payment' | 'task' | 'document' | 'expense'
+  entityId    String
+  details     String?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, entityType, entityId])
+}
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  workspaceId String    @default("ws-1")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  userName    String
+  event       String
+  severity    String // 'low' | 'medium' | 'high' | 'critical'
+  details     String?
+  ipAddress   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, severity])
+}
+
+model AppDocument {
+  id             String       @id @default(uuid())
+  workspaceId    String       @default("ws-1")
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  clientId       String?
+  client         Client?      @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Restrict)
+  transactionId  String?
+  transaction    Transaction? @relation(fields: [workspaceId, transactionId], references: [workspaceId, id], onDelete: Restrict)
+  documentType   String       @default("other")
+  fileName       String
+  fileSize       Float // KB
+  storageKey     String?      @unique
+  mimeType       String?
+  checksumSha256 String?
+  uploadedBy     String?
+  uploadedByUser User?        @relation("UploadedDocuments", fields: [workspaceId, uploadedBy], references: [workspaceId, id], onDelete: Restrict)
+  issueDate      String?
+  expiryDate     String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+
+  @@index([workspaceId, clientId])
+  @@index([workspaceId, transactionId])
+  @@index([workspaceId, expiryDate])
+  @@index([workspaceId, storageKey])
+}

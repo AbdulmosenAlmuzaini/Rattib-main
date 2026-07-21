@@ -1,0 +1,38 @@
+name: quality-gate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: rattib
+          POSTGRES_PASSWORD: rattib_ci_password
+          POSTGRES_DB: rattib
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rattib -d rattib"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://rattib:rattib_ci_password@127.0.0.1:5432/rattib?schema=public
+      SEED_ADMIN_PASSWORD: Rattib-CI-Password-2026!
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high

@@ -1,0 +1,11 @@
+node_modules
+dist
+backups
+test-results
+.git
+.env
+.env.*
+!.env.example
+Rattib-main
+prisma/dev.db
+*.log

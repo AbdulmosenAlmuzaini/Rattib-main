@@ -1,0 +1,13 @@
+node_modules/
+build/
+dist/
+coverage/
+backups/
+test-results/
+.DS_Store
+*.log
+.env*
+!.env.example
+!deploy/.env.production.example
+prisma/*.db
+*.db

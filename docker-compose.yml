@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rattib-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rattib
+      POSTGRES_PASSWORD: rattib_local_dev_2026
+      POSTGRES_DB: rattib
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - rattib-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rattib -d rattib"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  minio:
+    image: minio/minio:latest
+    container_name: rattib-minio
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: rattib_minio
+      MINIO_ROOT_PASSWORD: rattib_minio_local_2026
+    ports:
+      - "127.0.0.1:59000:9000"
+      - "127.0.0.1:59001:9001"
+    volumes:
+      - rattib-minio-data:/data
+
+volumes:
+  rattib-postgres-data:
+  rattib-minio-data:
